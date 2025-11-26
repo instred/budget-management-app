@@ -31,15 +31,12 @@ This app is the first part of the full project. Second part is to integrate it w
 - **Analytics Page**: Charts, top expenses, timeline, and budget tracker
 - **Account Settings Page**: Manage user account details
 
----
 
 ## Current Plans
 - Track monthly expenses with a user-defined budget
 - Export and import expenses (CSV, Excel)
 - Add more detailed analytics and filtering options
 - Add settings page
-
----
 
 ## Future Plans
 - Integration with **Azure** for:
@@ -48,7 +45,6 @@ This app is the first part of the full project. Second part is to integrate it w
   - Syncing data across devices
 - Enable multi-device access and secure remote storage
 
----
 
 ##  Installation
 
@@ -56,8 +52,9 @@ Make sure to have Python 3.10+ installed.
 
 1. Clone the repository:
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/instred/budget-management-app
    cd budget-app
+   ```
 
 2. Create a virtual environment:
 

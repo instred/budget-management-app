@@ -1,0 +1,6 @@
+customtkinter
+pillow
+CTkTable
+matplotlib
+tkcalendar
+ttkbootstrap
