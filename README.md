@@ -1,6 +1,6 @@
 # Budget App
 
-A personal finance management tool built in **Python** using **CustomTkinter**. Track your expenses, manage categories, and visualize your spending habits with interactive charts and summaries.
+- A personal finance management tool built in **Python** using **CustomTkinter**. Track your expenses, manage categories, and visualize your spending habits with interactive charts and summaries.
 This app is the first part of the full project. Second part is to integrate it with azure to store data, authenticate users and add analytical features.
 ---
 
