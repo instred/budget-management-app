@@ -111,7 +111,8 @@ class AnalyticsPage(ctk.CTkFrame):
             y1 = top_margin + usable_height
 
             self.bar_canvas.create_rectangle(x0, y0, x1, y1, fill="#00bcd4")
-            self.bar_canvas.create_text((x0 + x1) / 2, y0 - 10, text=f"${amt:.2f}", fill="white", font=("Arial", 8))
+            formatted_amt = self.controller.format_currency(amt)
+            self.bar_canvas.create_text((x0 + x1) / 2, y0 - 10, text=formatted_amt, fill="white", font=("Arial", 8))
             self.bar_canvas.create_text((x0 + x1) / 2, canvas_height - bottom_margin / 2, text=cat, fill="white", font=("Arial", 8))
 
 
@@ -179,7 +180,11 @@ class AnalyticsPage(ctk.CTkFrame):
         top5 = sorted(expenses, key=lambda x: x[3], reverse=True)[:5]
         for exp in top5:
             _, title, category, amount, date = exp
-            ctk.CTkLabel(self.top5_frame, text=f"{title} | {category} | ${amount:.2f} | {date}").pack(anchor="w")
+            formatted_amount = self.controller.format_currency(amount)
+            ctk.CTkLabel(
+                self.top5_frame,
+                text=f"{title} | {category} | {formatted_amount} | {date}"
+            ).pack(anchor="w")
 
     def refresh_budget_tracker(self):
         user = self.controller.current_user
@@ -197,8 +202,13 @@ class AnalyticsPage(ctk.CTkFrame):
         for _, _, _, amount, date in expenses:
             if date.startswith(current_month):
                 total_month += amount
+            
+        formatted_total = self.controller.format_currency(total_month)
+        formatted_limit = self.controller.format_currency(budget_limit)
 
-        self.budget_label.configure(text=f"Spent this month: ${total_month:.2f} / ${budget_limit}")
+        self.budget_label.configure(
+            text=f"Spent this month: {formatted_total} / {formatted_limit}"
+            )
         self.budget_progress.set(min(total_month / budget_limit, 1.0))
 
     def refresh_timeline(self):
@@ -217,5 +227,13 @@ class AnalyticsPage(ctk.CTkFrame):
 
         for exp in expenses_sorted:
             _, title, category, amount, date = exp
-            ctk.CTkLabel(self.timeline_frame, text=f"{date} | {title} | {category} | ${amount:.2f}").pack(anchor="w")
+            formatted_amount = self.controller.format_currency(amount)
+            ctk.CTkLabel(
+                self.timeline_frame,
+                text=f"{date} | {title} | {category} | {formatted_amount}"
+            ).pack(anchor="w")
 
+
+    def refresh(self):
+        # Refresh all analytics charts and info
+        self.refresh_all()

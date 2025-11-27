@@ -28,14 +28,22 @@ class SummaryPage(ctk.CTkFrame):
         if not user:
             return
 
-        # Refresh total
+        # --- Refresh total using global formatter ---
         total = get_total_amount(user["id"], user["username"])
-        self.total_label.configure(text=f"Total Spent: ${total:.2f}")
+        self.total_label.configure(
+            text=f"Total Spent: {self.controller.format_currency(total)}"
+        )
 
-        # Load last 5 expenses
+        # --- Load last 5 expenses ---
         expenses = fetch_expenses(user["id"], user["username"], limit=5)
         self.recent_box.delete("1.0", "end")
 
         for exp in expenses:
             _, title, category, amount, date = exp
-            self.recent_box.insert("end", f"{date} - {title} | {category} | ${amount:.2f}\n")
+
+            formatted_amount = self.controller.format_currency(amount)
+
+            self.recent_box.insert(
+                "end",
+                f"{date} - {title} | {category} | {formatted_amount}\n"
+            )

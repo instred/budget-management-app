@@ -145,21 +145,19 @@ class ExpensesPage(ctk.CTkFrame):
         header_frame = ctk.CTkFrame(self)
         header_frame.pack(fill="x", pady=(10, 0), padx=10)
 
-        # Select-all checkbox on the left
+        # Select-all checkbox on the LEFT (normal)
         self.select_all_var = ctk.BooleanVar(value=False)
         self.select_all_cb = ctk.CTkCheckBox(
             master=header_frame,
-            text="",  # no text
+            text="",
             variable=self.select_all_var,
             command=self.toggle_select_all
         )
         self.select_all_cb.pack(side="left", padx=(0, 5))
 
-        # Label next to it
-        label_frame = ctk.CTkFrame(header_frame)  # optional inner frame for centering
-        label_frame.pack(side="left", fill="x", expand=True)
-        label = ctk.CTkLabel(label_frame, text="Your Expenses", font=("Arial", 16))
-        label.pack(expand=True)  # centered within label_frame
+        # Perfectly centered label using `place`
+        label = ctk.CTkLabel(header_frame, text="Your Expenses", font=("Arial", 16))
+        label.place(relx=0.5, rely=0.5, anchor="center")
 
 
         # -----------------------------------
@@ -300,7 +298,8 @@ class ExpensesPage(ctk.CTkFrame):
         # Create individual expense rows
         for exp in expenses:
             exp_id, title, category, amount, date = exp
-            text = f"{title} | {category} | ${amount:.2f} | {date}"
+            formatted_amount = self.controller.format_currency(amount)
+            text = f"{title} | {category} | {formatted_amount} | {date}"
 
             var = ctk.BooleanVar()
             cb = ctk.CTkCheckBox(
@@ -473,3 +472,8 @@ class ExpensesPage(ctk.CTkFrame):
 
         except Exception as e:
             messagebox.showerror("Import Error", f"Failed to import CSV:\n{e}")
+
+
+    def refresh(self):
+        # Refreshes the expense list (applies filters, sorting, totals)
+        self.refresh_expense_list()

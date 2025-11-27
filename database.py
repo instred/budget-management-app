@@ -74,6 +74,22 @@ def ensure_expense_table(user_id, username):
     return table_name
 
 
+def ensure_user_settings(user_id):
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_settings (
+            user_id INTEGER PRIMARY KEY,
+            currency TEXT DEFAULT 'USD',
+            theme TEXT DEFAULT 'System'
+        )
+    """)
+    # Insert default row if not exists
+    cur.execute("INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)", (user_id,))
+    conn.commit()
+    conn.close()
+
+
 # ------------------------------------------------------------
 # INSERT EXPENSE
 # ------------------------------------------------------------
@@ -155,3 +171,29 @@ def get_total_amount(user_id, username):
 
     conn.close()
     return result if result else 0
+
+def delete_all_expenses(self):
+    cursor = self.conn.cursor()
+    cursor.execute("DELETE FROM expenses")
+    self.conn.commit()
+
+def load_user_settings(user_id):
+    ensure_user_settings(user_id)
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT currency, theme FROM user_settings WHERE user_id = ?", (user_id,))
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        return {"currency": row[0], "theme": row[1]}
+    return {"currency": "USD", "theme": "System"}
+
+
+
+def save_user_setting(user_id, key, value):
+    ensure_user_settings(user_id)
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute(f"UPDATE user_settings SET {key} = ? WHERE user_id = ?", (value, user_id))
+    conn.commit()
+    conn.close()
