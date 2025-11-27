@@ -3,6 +3,8 @@ from database import insert_expense, delete_expense, fetch_expenses
 from tkcalendar import Calendar
 from datetime import datetime
 import tkinter as tk
+from tkinter import filedialog, messagebox
+import pandas as pd
 
 class ExpensesPage(ctk.CTkFrame):
     def __init__(self, parent, controller):
@@ -73,6 +75,7 @@ class ExpensesPage(ctk.CTkFrame):
 
         self.entry_date.bind("<Button-1>", lambda e: pick_date())
 
+
         # Function to show calendar popup
         def pick_date():
             # Try to get current value of entry
@@ -129,19 +132,43 @@ class ExpensesPage(ctk.CTkFrame):
         self.entry_amount = ctk.CTkEntry(form_frame, placeholder_text="Amount", width=100)
         self.entry_amount.pack(side="left", padx=5)
 
+        spacer = ctk.CTkLabel(form_frame, text="")
+        spacer.pack(side="left", expand=True)
+
+        remove_btn = ctk.CTkButton(form_frame, text="Remove Column", command=self.remove_selected)
+        remove_btn.pack(side="right", padx=10)
+
         add_btn = ctk.CTkButton(form_frame, text="Add", command=self.add_expense)
         add_btn.pack(side="left", padx=10)
+
+        # Header frame
+        header_frame = ctk.CTkFrame(self)
+        header_frame.pack(fill="x", pady=(10, 0), padx=10)
+
+        # Select-all checkbox on the left
+        self.select_all_var = ctk.BooleanVar(value=False)
+        self.select_all_cb = ctk.CTkCheckBox(
+            master=header_frame,
+            text="",  # no text
+            variable=self.select_all_var,
+            command=self.toggle_select_all
+        )
+        self.select_all_cb.pack(side="left", padx=(0, 5))
+
+        # Label next to it
+        label_frame = ctk.CTkFrame(header_frame)  # optional inner frame for centering
+        label_frame.pack(side="left", fill="x", expand=True)
+        label = ctk.CTkLabel(label_frame, text="Your Expenses", font=("Arial", 16))
+        label.pack(expand=True)  # centered within label_frame
+
 
         # -----------------------------------
         # Scrollable list area
         # -----------------------------------
-        self.list_frame = ctk.CTkScrollableFrame(self, label_text="Your Expenses")
-        self.list_frame.pack(expand=True, fill="both", pady=10)
+        self.list_frame = ctk.CTkScrollableFrame(self)
+        self.list_frame.pack(expand=True, fill="both", pady=10, padx=10)
 
         self.checkboxes = []
-
-        remove_btn = ctk.CTkButton(self, text="Remove Selected", command=self.remove_selected)
-        remove_btn.pack(pady=5)
 
         # ---------------------------------------------------------
         # TOTAL BAR (bottom)
@@ -158,6 +185,22 @@ class ExpensesPage(ctk.CTkFrame):
             filter_by=self.filter_var.get(),
             sort_by=self.sort_var.get()
         )
+        # -----------------------------------
+        # Remove & Export & Import
+        # -----------------------------------
+
+        action_row = ctk.CTkFrame(self)
+        action_row.pack(fill="x", pady=5)
+
+        # Expand left side so buttons move to right
+        action_row.grid_columnconfigure(0, weight=1)
+
+
+        export_btn = ctk.CTkButton(action_row, text="Export CSV", width=120, command=self.export_csv)
+        export_btn.grid(row=0, column=1, padx=5)
+
+        import_btn = ctk.CTkButton(action_row, text="Import CSV", width=120, command=self.import_csv)
+        import_btn.grid(row=0, column=2, padx=5)
 
         
 
@@ -199,15 +242,20 @@ class ExpensesPage(ctk.CTkFrame):
         selected_sort = self.sort_var.get()
         self.refresh_expense_list(filter_by=selected_category, sort_by=selected_sort)
 
+    def toggle_select_all(self):
+        select_all = self.select_all_var.get()
+        for cb in self.checkboxes:
+            if hasattr(cb, "var"):  # skip non-checkbox labels
+                cb.var.set(select_all)
+
     # ---------------------------------------------------------
     # Refresh expense list (now supports filtering)
     # ---------------------------------------------------------
     def refresh_expense_list(self, filter_by="All", sort_by="Date (Newest)"):
 
-        # Clear previous checkboxes
+        # Clear previous expense checkboxes (skip select_all_cb)
         for cb in self.checkboxes:
             cb.destroy()
-
         self.checkboxes.clear()
 
         user = self.controller.current_user
@@ -217,16 +265,11 @@ class ExpensesPage(ctk.CTkFrame):
         if filter_by != "All":
             expenses = [exp for exp in expenses if exp[2] == filter_by]
 
-        if not expenses:
-            empty_label = ctk.CTkLabel(self.list_frame, text="No expenses found.")
-            empty_label.pack(pady=5)
-            self.checkboxes.append(empty_label)
-            return
-        
+        # Sort
         if sort_by == "Date (Newest)":
-            expenses.sort(key=lambda e: e[4], reverse=True)  # timestamp descending
+            expenses.sort(key=lambda e: e[4], reverse=True)
         elif sort_by == "Date (Oldest)":
-            expenses.sort(key=lambda e: e[4])  # timestamp ascending
+            expenses.sort(key=lambda e: e[4])
         elif sort_by == "Amount (High → Low)":
             expenses.sort(key=lambda e: e[3], reverse=True)
         elif sort_by == "Amount (Low → High)":
@@ -238,14 +281,26 @@ class ExpensesPage(ctk.CTkFrame):
         elif sort_by == "Category (A → Z)":
             expenses.sort(key=lambda e: e[2].lower())
 
+        # Update total
         total = sum(e[3] for e in expenses)
         self.total_label.configure(text=f"Total:  €{total:.2f}")
 
-        # Create rows
-        for exp in expenses:
-            exp_id, title, category, amount, timestamp = exp
+        # If no expenses
+        if not expenses:
+            empty_label = ctk.CTkLabel(self.list_frame, text="No expenses found.")
+            empty_label.pack(pady=5)
+            self.checkboxes.append(empty_label)
+            # Ensure Select All checkbox is unchecked
+            self.select_all_var.set(False)
+            return
 
-            text = f"{title} | {category} | ${amount:.2f} | {timestamp}"
+        # Re-add "select all" checkbox at the top-left
+        self.select_all_cb.pack(anchor="nw", padx=5, pady=5)
+
+        # Create individual expense rows
+        for exp in expenses:
+            exp_id, title, category, amount, date = exp
+            text = f"{title} | {category} | ${amount:.2f} | {date}"
 
             var = ctk.BooleanVar()
             cb = ctk.CTkCheckBox(
@@ -259,17 +314,19 @@ class ExpensesPage(ctk.CTkFrame):
 
             self.checkboxes.append(cb)
 
-        # Update filter dropdown (in case new categories were added)
+        # Reset the Select All checkbox if needed
+        all_selected = all(cb.var.get() for cb in self.checkboxes if hasattr(cb, "var"))
+        self.select_all_var.set(all_selected)
+
+        # Update filter dropdown with all categories
         self.filter_dropdown.configure(
             values=self.get_all_categories_from_db(include_all=True)
         )
 
+
     # ---------------------------------------------------------
     # ADD EXPENSE
     # ---------------------------------------------------------
-
-    
-
 
     def add_expense(self):
         title = self.entry_title.get().strip()
@@ -301,7 +358,7 @@ class ExpensesPage(ctk.CTkFrame):
             title=title,
             category=category,
             amount=amount,
-            timestamp=expense_date
+            date=expense_date
         )
 
         # Clear inputs
@@ -341,3 +398,78 @@ class ExpensesPage(ctk.CTkFrame):
             analytics_page = self.controller.main_app.pages.get("analytics")
             if analytics_page:
                 analytics_page.refresh_all()
+
+    
+    def export_csv(self):
+        user = self.controller.current_user
+        user_id = user["id"]
+        username = user["username"]
+
+        # Pull data from DB
+        expenses = fetch_expenses(user_id, username)
+
+        if not expenses:
+            messagebox.showwarning("No data", "There are no expenses to export.")
+            return
+
+        # Convert to DataFrame
+        df = pd.DataFrame(expenses, columns=["id", "title", "category", "amount", "date"])
+
+        # Ask user where to save
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv")],
+            title="Save Expenses CSV"
+        )
+
+        if file_path:
+            df.to_csv(file_path, index=False)
+            messagebox.showinfo("Success", f"Expenses exported to:\n{file_path}")
+
+    def import_csv(self):
+        user = self.controller.current_user
+        user_id = user["id"]
+        username = user["username"]
+
+        file_path = filedialog.askopenfilename(
+            title="Select CSV File",
+            filetypes=[("CSV files", "*.csv")]
+        )
+
+        if not file_path:
+            return
+
+        try:
+            df = pd.read_csv(file_path)
+
+            # Validate columns
+            required_cols = {"title", "category", "amount", "date"}
+            if not required_cols.issubset(df.columns):
+                messagebox.showerror(
+                    "Error",
+                    f"CSV must contain the following columns:\n{', '.join(required_cols)}"
+                )
+                return
+
+            # Insert each expense
+            for _, row in df.iterrows():
+                insert_expense(
+                    user_id=user_id,
+                    username=username,
+                    title=str(row["title"]),
+                    category=str(row["category"]),
+                    amount=float(row["amount"]),
+                    date=str(row["date"])  # date already validated earlier
+                )
+
+            # Refresh table
+            self.refresh_expense_list()
+
+            # Refresh analytics if exists
+            if hasattr(self.controller.main_app.pages["analytics"], "refresh_charts"):
+                self.controller.main_app.pages["analytics"].refresh_charts()
+
+            messagebox.showinfo("Success", "Expenses imported successfully!")
+
+        except Exception as e:
+            messagebox.showerror("Import Error", f"Failed to import CSV:\n{e}")

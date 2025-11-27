@@ -4,3 +4,4 @@ CTkTable
 matplotlib
 tkcalendar
 ttkbootstrap
+pandas

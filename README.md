@@ -34,9 +34,9 @@ This app is the first part of the full project. Second part is to integrate it w
 
 ## Current Plans
 - Track monthly expenses with a user-defined budget
-- Export and import expenses (CSV, Excel)
 - Add more detailed analytics and filtering options
 - Add settings page
+- Refactor code files, move helper functions into separate file
 
 ## Future Plans
 - Integration with **Azure** for:

@@ -37,5 +37,5 @@ class SummaryPage(ctk.CTkFrame):
         self.recent_box.delete("1.0", "end")
 
         for exp in expenses:
-            _, title, category, amount, timestamp = exp
-            self.recent_box.insert("end", f"{timestamp} - {title} | {category} | ${amount:.2f}\n")
+            _, title, category, amount, date = exp
+            self.recent_box.insert("end", f"{date} - {title} | {category} | ${amount:.2f}\n")

@@ -123,8 +123,8 @@ class AnalyticsPage(ctk.CTkFrame):
             return
 
         monthly_totals = defaultdict(float)
-        for _, _, _, amount, timestamp in expenses:
-            dt = datetime.strptime(timestamp, "%Y-%m-%d")
+        for _, _, _, amount, date in expenses:
+            dt = datetime.strptime(date, "%Y-%m-%d")
             key = dt.strftime("%Y-%m")
             monthly_totals[key] += amount
 
@@ -178,8 +178,8 @@ class AnalyticsPage(ctk.CTkFrame):
 
         top5 = sorted(expenses, key=lambda x: x[3], reverse=True)[:5]
         for exp in top5:
-            _, title, category, amount, timestamp = exp
-            ctk.CTkLabel(self.top5_frame, text=f"{title} | {category} | ${amount:.2f} | {timestamp}").pack(anchor="w")
+            _, title, category, amount, date = exp
+            ctk.CTkLabel(self.top5_frame, text=f"{title} | {category} | ${amount:.2f} | {date}").pack(anchor="w")
 
     def refresh_budget_tracker(self):
         user = self.controller.current_user
@@ -194,8 +194,8 @@ class AnalyticsPage(ctk.CTkFrame):
         budget_limit = 2000  # Example fixed budget
         current_month = datetime.now().strftime("%Y-%m")
 
-        for _, _, _, amount, timestamp in expenses:
-            if timestamp.startswith(current_month):
+        for _, _, _, amount, date in expenses:
+            if date.startswith(current_month):
                 total_month += amount
 
         self.budget_label.configure(text=f"Spent this month: ${total_month:.2f} / ${budget_limit}")
@@ -216,6 +216,6 @@ class AnalyticsPage(ctk.CTkFrame):
         expenses_sorted = sorted(expenses, key=lambda x: x[4], reverse=True)
 
         for exp in expenses_sorted:
-            _, title, category, amount, timestamp = exp
-            ctk.CTkLabel(self.timeline_frame, text=f"{timestamp} | {title} | {category} | ${amount:.2f}").pack(anchor="w")
+            _, title, category, amount, date = exp
+            ctk.CTkLabel(self.timeline_frame, text=f"{date} | {title} | {category} | ${amount:.2f}").pack(anchor="w")
 

@@ -64,7 +64,7 @@ def ensure_expense_table(user_id, username):
             title TEXT,
             category TEXT,
             amount REAL,
-            timestamp TEXT
+            date TEXT
         )
     """)
 
@@ -77,7 +77,7 @@ def ensure_expense_table(user_id, username):
 # ------------------------------------------------------------
 # INSERT EXPENSE
 # ------------------------------------------------------------
-def insert_expense(user_id, username, title, category, amount, timestamp=None):
+def insert_expense(user_id, username, title, category, amount, date=None):
     """
     Insert an expense for a user.
     
@@ -87,19 +87,19 @@ def insert_expense(user_id, username, title, category, amount, timestamp=None):
         title (str): Expense title
         category (str): Expense category
         amount (float): Expense amount
-        timestamp (str or None): Optional timestamp in 'YYYY-MM-DD' format
+        date (str or None): 'YYYY-MM-DD' 
     """
     table = ensure_expense_table(user_id, username)
 
-    if timestamp is None:
-        timestamp = datetime.now().strftime("%Y-%m-%d")
+    if date is None:
+        date = datetime.now().strftime("%Y-%m-%d")
     
     conn = _connect()
     cur = conn.cursor()
 
     cur.execute(
-        f"INSERT INTO {table} (title, category, amount, timestamp) VALUES (?, ?, ?, ?)",
-        (title, category, amount, timestamp)
+        f"INSERT INTO {table} (title, category, amount, date) VALUES (?, ?, ?, ?)",
+        (title, category, amount, date)
     )
 
     conn.commit()
@@ -132,12 +132,12 @@ def fetch_expenses(user_id, username, limit=None):
 
     if limit:
         cur.execute(
-            f"SELECT id, title, category, amount, timestamp FROM {table} ORDER BY id DESC LIMIT ?",
+            f"SELECT id, title, category, amount, date FROM {table} ORDER BY id DESC LIMIT ?",
             (limit,)
         )
     else:
         cur.execute(
-            f"SELECT id, title, category, amount, timestamp FROM {table} ORDER BY id DESC"
+            f"SELECT id, title, category, amount, date FROM {table} ORDER BY id DESC"
         )
 
     rows = cur.fetchall()
