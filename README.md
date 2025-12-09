@@ -49,21 +49,26 @@ Make sure to have Python 3.10+ installed.
 1. Clone the repository:
    ```bash
    git clone https://github.com/instred/budget-management-app
-   cd budget-app
-   ```
+   cd budget-management-app
 
-2. Create a virtual environment:
+2. Download the ODBC 18 Driver
+
+    ```bash
+    https://go.microsoft.com/fwlink/?linkid=2335671
+
+
+3. Create a virtual environment:
 
     ```bash
     python -m venv .venv
     source .venv/bin/activate    # Windows: .venv\Scripts\activate
 
-3. Install dependencies
+4. Install dependencies
 
     ```bash 
     pip install -r requirements.txt
 
-4. Run the application
+5. Run the application
 
     ```bash
     python main.py

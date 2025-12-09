@@ -69,7 +69,6 @@ class LoginFrame(ctk.CTkFrame):
     def show_register(self):
         self.login_frame.pack_forget()
         self.register_frame.pack(expand=True)
-        self.controller.show_loading_spinner()
 
     # --------------------------
     # Show login screen
