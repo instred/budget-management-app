@@ -32,18 +32,14 @@ This app is the first part of the full project. Second part is to integrate it w
 - **Account Settings Page**: Manage user account details
 
 
-## Current Plans
-- Track monthly expenses with a user-defined budget
-- Add more detailed analytics and filtering options
-- Add settings page
-- Refactor code files, move helper functions into separate file
+## Latest Changelog
+ - Code Modularization: Successfully refactored the application architecture. Controller logic is now clean, and database operations/helper functions have been moved to dedicated utils and initializer modules to ensure code clarity and non-blocking performance.
+ - Non-Blocking UI: Implemented multithreading for all intensive database operations (loading, saving settings, deleting expenses) to ensure a smooth and responsive User Interface (UI).
+ - Changed Sqlite to Azure SQL, passwords are now hashed in Azure DB
 
 ## Future Plans
-- Integration with **Azure** for:
-  - Cloud storage
-  - User authentication
-  - Syncing data across devices
-- Enable multi-device access and secure remote storage
+ - UI/UX Redesign: Implement a modern and improved look and feel for the application interface.
+ - External Analytics: Integrate the application with Power BI for advanced data analysis and open the dashboard directly from the app.
 
 
 ##  Installation
