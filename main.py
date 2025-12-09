@@ -1,6 +1,6 @@
 import customtkinter as ctk
 from controller import AppController
-from login import init_database
+from database import init_database
 
 if __name__ == "__main__":
     init_database()

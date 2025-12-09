@@ -10,11 +10,42 @@ DB_PATH = "users.db"
 def _connect():
     return sqlite3.connect(DB_PATH)
 
+# --------------------------
+# Database Setup
+# --------------------------
+def init_database():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS Users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password TEXT
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS UserSettings (
+            user_id INTEGER PRIMARY KEY,
+            currency TEXT DEFAULT 'PLN',
+            theme TEXT DEFAULT 'System'
+        )
+    """)
+
+    cur.execute("SELECT COUNT(*) FROM users")
+    if cur.fetchone()[0] == 0:
+        cur.execute("INSERT INTO users (username, password) VALUES (?, ?)", ("admin", "admin"))
+        conn.commit()
+
+    conn.close()
+
 
 # ------------------------------------------------------------
 # USER MANAGEMENT
 # ------------------------------------------------------------
 def create_user(username, password):
+    """Rejestruje nowego użytkownika."""
     conn = _connect()
     cur = conn.cursor()
 
@@ -32,19 +63,21 @@ def create_user(username, password):
         conn.close()
 
 
-def get_user(username):
+def get_user(username, password):
+
     conn = _connect()
     cur = conn.cursor()
 
-    cur.execute("SELECT id, username, password FROM users WHERE username=?", (username,))
+    # W SQLITE: Sprawdzamy hasło bezpośrednio, ponieważ nie używamy jeszcze bcrypt
+    cur.execute("SELECT id, username, password FROM users WHERE username=? AND password=?", (username, password))
     result = cur.fetchone()
 
     conn.close()
 
     if result:
+        # Zwracamy słownik z kluczami oczekiwanymi przez controller
         return {"id": result[0], "username": result[1], "password": result[2]}
     return None
-
 
 # ------------------------------------------------------------
 # EXPENSE TABLE CREATION (per user)

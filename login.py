@@ -1,30 +1,6 @@
 import customtkinter as ctk
-import sqlite3
-from database import ensure_expense_table
+from database import ensure_expense_table, get_user, create_user
 
-DB_PATH = "users.db"
-
-# --------------------------
-# Database Setup
-# --------------------------
-def init_database():
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            password TEXT
-        )
-    """)
-
-    cur.execute("SELECT COUNT(*) FROM users")
-    if cur.fetchone()[0] == 0:
-        cur.execute("INSERT INTO users (username, password) VALUES (?, ?)", ("admin", "admin"))
-        conn.commit()
-
-    conn.close()
 
 # --------------------------
 # Login Frame
@@ -106,21 +82,21 @@ class LoginFrame(ctk.CTkFrame):
         username = self.username_entry.get().strip()
         password = self.password_entry.get().strip()
 
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
-        result = cur.fetchone()
-        conn.close()
+        # UŻYWAMY FUNKCJI get_user Z database.py
+        user_data = get_user(username, password)
 
-        if result:
-            user_id = result[0]  # id from users table
-            username = result[1]
+        if user_data:
+            user_id = user_data["id"]
+            username = user_data["username"]
+            
             self.controller.current_user = {"id": user_id, "username": username}
-            # create user-specific expense table if it doesn't exist
+            
+            # create user-specific expense table if it doesn't exist (na razie zostawiamy, potem usuniemy)
             ensure_expense_table(user_id, username)
+            
             self.controller.show_main_app()
         else:
-            self.login_message_label.configure(text="Invalid credentials.")
+            self.login_message_label.configure(text="Invalid credentials.", text_color="red")
 
     # --------------------------
     # Registration Logic
@@ -138,18 +114,14 @@ class LoginFrame(ctk.CTkFrame):
             self.register_message_label.configure(text="Passwords do not match.", text_color="red")
             return
 
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        try:
-            cur.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
-            conn.commit()
+        # UŻYWAMY FUNKCJI create_user Z database.py
+        if create_user(username, password):
             self.register_message_label.configure(text="User registered successfully!", text_color="green")
             # Clear registration fields
             self.reg_username_entry.delete(0, "end")
             self.reg_password_entry.delete(0, "end")
             self.reg_confirm_entry.delete(0, "end")
-        except sqlite3.IntegrityError:
+        else:
+            # Obsługa błędu IntegrityError przeniesiona do database.py
             self.register_message_label.configure(text="Username already exists.", text_color="red")
-        finally:
-            conn.close()
 
