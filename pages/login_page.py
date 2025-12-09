@@ -1,5 +1,7 @@
 import customtkinter as ctk
-from database import ensure_expense_table, get_user, create_user
+from database import get_user, create_user
+import bcrypt
+import threading
 
 
 # --------------------------
@@ -67,6 +69,7 @@ class LoginFrame(ctk.CTkFrame):
     def show_register(self):
         self.login_frame.pack_forget()
         self.register_frame.pack(expand=True)
+        self.controller.show_loading_spinner()
 
     # --------------------------
     # Show login screen
@@ -82,21 +85,12 @@ class LoginFrame(ctk.CTkFrame):
         username = self.username_entry.get().strip()
         password = self.password_entry.get().strip()
 
-        # UŻYWAMY FUNKCJI get_user Z database.py
-        user_data = get_user(username, password)
+        if not username or not password:
+            self.login_message_label.configure(text="Username and password are required.", text_color="red")
+            return
 
-        if user_data:
-            user_id = user_data["id"]
-            username = user_data["username"]
-            
-            self.controller.current_user = {"id": user_id, "username": username}
-            
-            # create user-specific expense table if it doesn't exist (na razie zostawiamy, potem usuniemy)
-            ensure_expense_table(user_id, username)
-            
-            self.controller.show_main_app()
-        else:
-            self.login_message_label.configure(text="Invalid credentials.", text_color="red")
+        login_thread = threading.Thread(target=self.perform_login_task, args=(username, password))
+        login_thread.start()
 
     # --------------------------
     # Registration Logic
@@ -115,6 +109,7 @@ class LoginFrame(ctk.CTkFrame):
             return
 
         # UŻYWAMY FUNKCJI create_user Z database.py
+        # Funkcja create_user zajmuje się teraz: hashowaniem, wstawianiem do Users i wstawianiem domyślnych UserSettings
         if create_user(username, password):
             self.register_message_label.configure(text="User registered successfully!", text_color="green")
             # Clear registration fields
@@ -122,6 +117,50 @@ class LoginFrame(ctk.CTkFrame):
             self.reg_password_entry.delete(0, "end")
             self.reg_confirm_entry.delete(0, "end")
         else:
-            # Obsługa błędu IntegrityError przeniesiona do database.py
+            # Obsługa błędu IntegrityError (nazwa użytkownika już istnieje)
             self.register_message_label.configure(text="Username already exists.", text_color="red")
+
+    def perform_login_task(self, username, password):
+        """Wątkowa funkcja do obsługi połączenia z DB i weryfikacji."""
+        
+        # UWAGA: Ta część trwa długo, ale NIE blokuje GUI
+        try:
+            # 1. Logika weryfikacji
+            user_data = get_user(username)
+            login_success = False
+            user_id = None
+            
+            if user_data and user_data.get("password_hash"): # Musisz mieć pole 'password_hash' z bazy
+                stored_hash = user_data["password_hash"]
+                # bcrypt.checkpw to funkcja CPU-intensywna i jest to OK w wątku tła
+                if bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
+                    login_success = True
+                    user_id = user_data["id"]
+
+        except Exception as e:
+            # Złapanie błędu pyodbc/SQL
+            print(f"Błąd połączenia z bazą danych: {e}")
+            login_success = False
+            user_id = None
+        
+        # 2. Powrót do Main Thread (manipulacja GUI)
+        # Używamy self.controller.after() do bezpiecznego wykonania handle_login_result 
+        # w wątku głównym Tkinter, gdy operacja tła się zakończy.
+        self.controller.after(
+            1, # Wykonaj natychmiast
+            lambda: self.handle_login_result(login_success, username, user_id)
+        )
+
+    # --------------------------
+    # Login Logic (WYKONYWANE PONOWNIE W MAIN THREAD)
+    # --------------------------
+    def handle_login_result(self, success, username, user_id):
+
+        if success:
+            # Ustaw użytkownika i przejdź do aplikacji
+            self.controller.current_user = {"id": user_id, "username": username}
+            self.controller.show_main_app()
+        else:
+            # Pokaż błąd
+            self.login_message_label.configure(text="Invalid credentials.", text_color="red")
 

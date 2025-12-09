@@ -1,8 +1,8 @@
 import customtkinter as ctk
-from summary_page import SummaryPage
-from expenses_page import ExpensesPage
-from analytics_page import AnalyticsPage
-from settings_page import AccountSettingsPage
+from pages.summary_page import SummaryPage
+from pages.expenses_page import ExpensesPage
+from pages.analytics_page import AnalyticsPage
+from pages.settings_page import AccountSettingsPage
 
 class MainApp(ctk.CTkFrame):
     def __init__(self, parent, controller):
@@ -25,7 +25,6 @@ class MainApp(ctk.CTkFrame):
             "settings": AccountSettingsPage(self.tab_settings, controller),
         }
 
-        # FIX: use command instead of bind
         self.tabview.configure(command=self.on_tab_change)
 
         logout_btn = ctk.CTkButton(self, text="Logout", width=80,

@@ -1,232 +1,327 @@
-import sqlite3
-from datetime import datetime
+import os
+import sys
+import pyodbc
+import bcrypt
+from decimal import Decimal
+from dotenv import load_dotenv
 
-DB_PATH = "users.db"
+load_dotenv()
 
+DRIVER = '{ODBC Driver 18 for SQL Server}'
+SQL_SERVER = os.getenv('AZURE_SQL_SERVER')
+SQL_DATABASE = os.getenv('AZURE_SQL_DB')
+SQL_USERNAME = os.getenv('AZURE_SQL_UID')
+SQL_PASSWORD = os.getenv('AZURE_SQL_PWD')
 
-# ------------------------------------------------------------
-# Helper: Connect to DB
-# ------------------------------------------------------------
-def _connect():
-    return sqlite3.connect(DB_PATH)
-
-# --------------------------
-# Database Setup
-# --------------------------
-def init_database():
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS Users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            password TEXT
-        )
-    """)
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS UserSettings (
-            user_id INTEGER PRIMARY KEY,
-            currency TEXT DEFAULT 'PLN',
-            theme TEXT DEFAULT 'System'
-        )
-    """)
-
-    cur.execute("SELECT COUNT(*) FROM users")
-    if cur.fetchone()[0] == 0:
-        cur.execute("INSERT INTO users (username, password) VALUES (?, ?)", ("admin", "admin"))
-        conn.commit()
-
-    conn.close()
+CONNECTION_STRING = (
+    f"DRIVER={DRIVER};"
+    f"SERVER=tcp:{SQL_SERVER},1433;"
+    f"DATABASE={SQL_DATABASE};"
+    f"UID={SQL_USERNAME};"
+    f"PWD={SQL_PASSWORD};"
+    "Encrypt=yes;"
+    "TrustServerCertificate=no;"
+    "Connection Timeout=30;"
+)
 
 
-# ------------------------------------------------------------
-# USER MANAGEMENT
-# ------------------------------------------------------------
-def create_user(username, password):
-    """Rejestruje nowego użytkownika."""
-    conn = _connect()
-    cur = conn.cursor()
-
+def _get_connection():
+    """Creates a secure Azure SQL connection."""
+    if not all([SQL_SERVER, SQL_DATABASE, SQL_USERNAME, SQL_PASSWORD]):
+        print("Credentials not loaded properly")
+        sys.exit(1)
     try:
+        return pyodbc.connect(CONNECTION_STRING)
+    except pyodbc.Error as ex:
+        sqlstate = ex.args[0]
+        if '28000' in sqlstate:
+            print("Authentication error (28000).")
+        elif '08001' in sqlstate:
+            print("Connection error (08001).")
+        else:
+            print(f"Unknown connection error: {ex}")
+        raise
+
+
+def init_database():
+    """Ensures that all required SQL tables exist."""
+    conn = None
+    try:
+        conn = _get_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Users' AND xtype='U')
+            CREATE TABLE Users (
+                UserID INT IDENTITY(1,1) PRIMARY KEY,
+                Username NVARCHAR(100) UNIQUE NOT NULL,
+                PasswordHash VARCHAR(100) NOT NULL
+            )
+        """)
+
+        cur.execute("""
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='UserSettings' AND xtype='U')
+            CREATE TABLE UserSettings (
+                UserID INT PRIMARY KEY,
+                Currency NVARCHAR(10) DEFAULT 'PLN',
+                Theme NVARCHAR(50) DEFAULT 'System',
+                Budget DECIMAL(18, 2) DEFAULT 0.00
+            )
+        """)
+
+        cur.execute("""
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Expenses' AND xtype='U')
+            CREATE TABLE Expenses (
+                ExpenseID INT IDENTITY(1,1) PRIMARY KEY,
+                UserID INT NOT NULL,
+                ExpenseName NVARCHAR(255) NOT NULL,
+                Category NVARCHAR(100) NOT NULL,
+                Amount DECIMAL(18, 2) NOT NULL,
+                ExpenseDate DATE NOT NULL
+            )
+        """)
+
+        conn.commit()
+    except pyodbc.Error as ex:
+        print(f"Error, cannot initialize the schema: {ex}")
+        sys.exit(1)
+    finally:
+        if conn:
+            conn.close()
+
+
+# ------------ USER MANAGEMENT ------------
+
+def create_user(username, password):
+    """Creates a new user and stores default settings."""
+    password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    conn = None
+    try:
+        conn = _get_connection()
+        cur = conn.cursor()
+
         cur.execute(
-            "INSERT INTO users (username, password) VALUES (?, ?)",
-            (username, password)
+            """
+            INSERT INTO Users (Username, PasswordHash)
+            OUTPUT INSERTED.UserID
+            VALUES (?, ?)
+            """,
+            (username, password_hash)
+        )
+        user_id = cur.fetchone()[0]
+
+        cur.execute(
+            "INSERT INTO UserSettings (UserID, Currency, Theme, Budget) VALUES (?, ?, ?, ?)",
+            (user_id, 'PLN', 'Dark', Decimal('0.00'))
+        )
+
+        conn.commit()
+        return True
+    except pyodbc.IntegrityError:
+        return False
+    except pyodbc.Error as ex:
+        print(f"Error, cannot create new user: {ex}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_user(username):
+    """Returns user data including hashed password."""
+    conn = None
+    try:
+        conn = _get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT UserID, Username, PasswordHash FROM Users WHERE Username=?", (username,))
+        row = cur.fetchone()
+        if row:
+            return {"id": row[0], "username": row[1], "password_hash": row[2]}
+        return None
+    except pyodbc.Error as ex:
+        print(f"Error, cannot fetch user: {ex}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+# ------------ EXPENSE MANAGEMENT ------------
+
+def insert_expense(user_id, title, category, amount, date):
+    """Inserts a new expense."""
+    conn = None
+    try:
+        conn = _get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO Expenses (UserID, ExpenseName, Category, Amount, ExpenseDate)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (user_id, title, category, Decimal(str(amount)), date)
         )
         conn.commit()
         return True
-    except sqlite3.IntegrityError:
-        # Username already exists
+    except pyodbc.Error as ex:
+        print(f"Error during expenses adding: {ex}")
         return False
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
-def get_user(username, password):
+def fetch_expenses(user_id, limit=None):
+    """Fetches user expenses sorted by newest first."""
+    conn = None
+    try:
+        conn = _get_connection()
+        cur = conn.cursor()
 
-    conn = _connect()
-    cur = conn.cursor()
+        sql = """
+        SELECT ExpenseID, ExpenseName, Category, Amount, ExpenseDate
+        FROM Expenses
+        WHERE UserID = ?
+        ORDER BY ExpenseDate DESC, ExpenseID DESC
+        """
 
-    # W SQLITE: Sprawdzamy hasło bezpośrednio, ponieważ nie używamy jeszcze bcrypt
-    cur.execute("SELECT id, username, password FROM users WHERE username=? AND password=?", (username, password))
-    result = cur.fetchone()
+        if limit:
+            sql += f" OFFSET 0 ROWS FETCH NEXT {int(limit)} ROWS ONLY"
 
-    conn.close()
+        cur.execute(sql, (user_id,))
+        rows = cur.fetchall()
 
-    if result:
-        # Zwracamy słownik z kluczami oczekiwanymi przez controller
-        return {"id": result[0], "username": result[1], "password": result[2]}
-    return None
-
-# ------------------------------------------------------------
-# EXPENSE TABLE CREATION (per user)
-# ------------------------------------------------------------
-def ensure_expense_table(user_id, username):
-    """
-    Each user gets their own expense table.
-    """
-    table_name = f"expenses_{user_id}_{username}"
-
-    conn = _connect()
-    cur = conn.cursor()
-
-    cur.execute(f"""
-        CREATE TABLE IF NOT EXISTS {table_name} (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT,
-            category TEXT,
-            amount REAL,
-            date TEXT
-        )
-    """)
-
-    conn.commit()
-    conn.close()
-
-    return table_name
+        return [
+            (r[0], r[1], r[2], float(r[3]), r[4].strftime('%Y-%m-%d'))
+            for r in rows
+        ]
+    except pyodbc.Error as ex:
+        print(f"Error during expenses fetching: {ex}")
+        return []
+    finally:
+        if conn:
+            conn.close()
 
 
-def ensure_user_settings(user_id):
-    conn = _connect()
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS user_settings (
-            user_id INTEGER PRIMARY KEY,
-            currency TEXT DEFAULT 'USD',
-            theme TEXT DEFAULT 'System'
-        )
-    """)
-    # Insert default row if not exists
-    cur.execute("INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)", (user_id,))
-    conn.commit()
-    conn.close()
+def get_total_amount(user_id):
+    """Returns total expense amount."""
+    conn = None
+    try:
+        conn = _get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT SUM(Amount) FROM Expenses WHERE UserID = ?", (user_id,))
+        result = cur.fetchone()[0]
+        return float(result) if result else 0.0
+    except pyodbc.Error as ex:
+        print(f"Error during expenses summing: {ex}")
+        return 0.0
+    finally:
+        if conn:
+            conn.close()
 
 
-# ------------------------------------------------------------
-# INSERT EXPENSE
-# ------------------------------------------------------------
-def insert_expense(user_id, username, title, category, amount, date=None):
-    """
-    Insert an expense for a user.
-    
-    Args:
-        user_id (int): User ID
-        username (str): Username
-        title (str): Expense title
-        category (str): Expense category
-        amount (float): Expense amount
-        date (str or None): 'YYYY-MM-DD' 
-    """
-    table = ensure_expense_table(user_id, username)
-
-    if date is None:
-        date = datetime.now().strftime("%Y-%m-%d")
-    
-    conn = _connect()
-    cur = conn.cursor()
-
-    cur.execute(
-        f"INSERT INTO {table} (title, category, amount, date) VALUES (?, ?, ?, ?)",
-        (title, category, amount, date)
-    )
-
-    conn.commit()
-    conn.close()
-
-
-# ------------------------------------------------------------
-# DELETE EXPENSE
-# ------------------------------------------------------------
-def delete_expense(user_id, username, expense_id):
-    table = ensure_expense_table(user_id, username)
-
-    conn = _connect()
-    cur = conn.cursor()
-
-    cur.execute(f"DELETE FROM {table} WHERE id=?", (expense_id,))
-
-    conn.commit()
-    conn.close()
-
-
-# ------------------------------------------------------------
-# FETCH EXPENSES (optionally limit)
-# ------------------------------------------------------------
-def fetch_expenses(user_id, username, limit=None):
-    table = ensure_expense_table(user_id, username)
-
-    conn = _connect()
-    cur = conn.cursor()
-
-    if limit:
+def get_total_amount_for_month(user_id, year, month):
+    """Returns total expenses for a specific month."""
+    conn = None
+    try:
+        conn = _get_connection()
+        cur = conn.cursor()
         cur.execute(
-            f"SELECT id, title, category, amount, date FROM {table} ORDER BY id DESC LIMIT ?",
-            (limit,)
+            """
+            SELECT SUM(Amount)
+            FROM Expenses
+            WHERE UserID = ?
+              AND YEAR(ExpenseDate) = ?
+              AND MONTH(ExpenseDate) = ?
+            """,
+            (user_id, year, month)
         )
-    else:
-        cur.execute(
-            f"SELECT id, title, category, amount, date FROM {table} ORDER BY id DESC"
-        )
+        result = cur.fetchone()[0]
+        return float(result) if result else 0.0
+    except pyodbc.Error as ex:
+        print(f"Error during monthly summing: {ex}")
+        return 0.0
+    finally:
+        if conn:
+            conn.close()
 
-    rows = cur.fetchall()
-    conn.close()
-    return rows
 
-def get_total_amount(user_id, username):
-    table = ensure_expense_table(user_id, username)
+def delete_expense(expense_id, user_id):
+    """Deletes a specific user expense."""
+    conn = None
+    try:
+        conn = _get_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM Expenses WHERE ExpenseID = ? AND UserID = ?", (expense_id, user_id))
+        conn.commit()
+        return cur.rowcount > 0
+    except pyodbc.Error as ex:
+        print(f"Error during expense deletion: {ex}")
+        return False
+    finally:
+        if conn:
+            conn.close()
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
 
-    cursor.execute(f"SELECT SUM(amount) FROM {table}")
-    result = cursor.fetchone()[0]
+def delete_all_expenses(user_id):
+    """Deletes all expenses for a user."""
+    conn = None
+    try:
+        conn = _get_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM Expenses WHERE UserID = ?", (user_id,))
+        conn.commit()
+        return True
+    except pyodbc.Error as ex:
+        print(f"Error during expenses deletion: {ex}")
+        return False
+    finally:
+        if conn:
+            conn.close()
 
-    conn.close()
-    return result if result else 0
 
-def delete_all_expenses(self):
-    cursor = self.conn.cursor()
-    cursor.execute("DELETE FROM expenses")
-    self.conn.commit()
+# ------------ USER SETTINGS ------------
 
 def load_user_settings(user_id):
-    ensure_user_settings(user_id)
-    conn = _connect()
-    cur = conn.cursor()
-    cur.execute("SELECT currency, theme FROM user_settings WHERE user_id = ?", (user_id,))
-    row = cur.fetchone()
-    conn.close()
-    if row:
-        return {"currency": row[0], "theme": row[1]}
-    return {"currency": "USD", "theme": "System"}
+    """Loads all user settings."""
+    conn = None
+    try:
+        conn = _get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT Currency, Theme, Budget FROM UserSettings WHERE UserID = ?", (user_id,))
+        row = cur.fetchone()
+        if not row:
+            return {}
+        return {
+            "currency": row[0],
+            "theme": row[1],
+            "budget": float(row[2]) if row[2] is not None else 0.0
+        }
+    except pyodbc.Error as ex:
+        print(f"Error during settings load: {ex}")
+        return {}
+    finally:
+        if conn:
+            conn.close()
 
 
+def save_user_setting(user_id, setting_name, setting_value):
+    """Saves a single user setting (currency/theme/budget)."""
+    conn = None
+    try:
+        conn = _get_connection()
+        cur = conn.cursor()
 
-def save_user_setting(user_id, key, value):
-    ensure_user_settings(user_id)
-    conn = _connect()
-    cur = conn.cursor()
-    cur.execute(f"UPDATE user_settings SET {key} = ? WHERE user_id = ?", (value, user_id))
-    conn.commit()
-    conn.close()
+        if setting_name.lower() == 'budget':
+            setting_value = Decimal(str(setting_value))
+
+        sql = f"UPDATE UserSettings SET {setting_name} = ? WHERE UserID = ?"
+        cur.execute(sql, (setting_value, user_id))
+        conn.commit()
+        return True
+    except pyodbc.Error as ex:
+        print(f"Error during settings saving: {ex}")
+        return False
+    finally:
+        if conn:
+            conn.close()
